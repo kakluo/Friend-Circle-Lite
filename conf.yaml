@@ -11,7 +11,7 @@ spider_settings:
   json_url: "https://hexo.200038.xyz/friend.json"
   article_count: 5
   merge_result:
-    enable: true
+    enable: false
     merge_json_url: "https://friend.200038.xyz"
 
 # 邮箱推送功能配置，暂未实现，等待后续开发
@@ -38,10 +38,10 @@ rss_subscribe:
   enable: true
   github_username: willow-god
   github_repo: Friend-Circle-Lite
-  your_blog_url: https://blog.liushen.fun/
+  your_blog_url: https://hexo.200038.xyz/
   email_template: "./rss_subscribe/email_template.html"
   website_info:
-    title: "清羽飞扬"
+    title: "东方月初"
 
 # SMTP 配置
 # 解释：使用其中的相关配置实现上面两种功能，若无推送要求可以不配置，请将以上两个配置置为false
@@ -60,7 +60,7 @@ smtp:
 #   name:               友链名称
 #   url:                指定的RSS地址
 specific_RSS:
-  - name: "Redish101"
-    url: "https://reblog.redish101.top/api/feed"
+  # - name: "Redish101"
+  #   url: "https://reblog.redish101.top/api/feed"
   # - name: "無名小栈"
   #   url: "https://blog.imsyy.top/rss.xml"
