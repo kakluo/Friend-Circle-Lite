@@ -51,7 +51,7 @@ link_check:
   max_workers: 10
   status_api_url: "https://v2.xxapi.cn/api/status?url={url}"
   enable_backlink_check: true
-  author_url: "blog.liushen.fun"
+  author_url: "solitude.200038.xyz"
 
 # 邮件推送功能配置，暂未实现，等待后续开发
 # 说明：每次运行后向指定邮箱推送所有友链文章更新。
