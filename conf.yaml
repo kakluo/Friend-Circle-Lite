@@ -10,7 +10,7 @@ debug: false
 #   article_count: 每个站点最多抓取的文章数量
 spider_settings:
   enable: true
-  json_url: "https://blog.liushen.fun/friend.json"
+  json_url: "https://solitude.200038.xyz/friend.json"
   article_count: 5
 
 # 代理配置
@@ -33,7 +33,7 @@ proxy_settings:
 #   merge_link_check_data: 是否合并友链可达性数据
 merge_settings:
   enable: false
-  remote_base_url: "https://fc.liushen.fun"
+  remote_base_url: "https://friend.biuxin.com"
   merge_article_data: true
   merge_link_check_data: true
 
@@ -67,10 +67,10 @@ rss_subscribe:
   enable: true
   github_username: willow-god
   github_repo: Friend-Circle-Lite
-  your_blog_url: https://blog.liushen.fun/
+  your_blog_url: https://solitude.200038.xyz/
   email_template: "./push_templates/default.html"
   website_info:
-    title: "清羽飞扬"
+    title: "BiuXin"
 
 # SMTP 配置
 # 说明：用于上方邮件相关功能。如果不使用邮件功能，可关闭 email_push 和 rss_subscribe。
