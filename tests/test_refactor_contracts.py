@@ -21,9 +21,44 @@ from friend_circle_lite.models import Article, CacheRecord, FeedEndpoint, LinkCh
 from friend_circle_lite.outputs.legacy_api import _to_public_link
 from friend_circle_lite.storage.diagnostics import SQLiteDebugDumper
 from friend_circle_lite.utils.json import write_json
+from friend_circle_lite.utils.config import load_raw_config
 
 
 class RefactorContractsTest(unittest.TestCase):
+    def test_repository_variable_overrides_nested_config_without_editing_yaml(self):
+        from friend_circle_lite.utils.config import _apply_config_overrides
+
+        original = {
+            "merge_settings": {
+                "enable": False,
+                "remote_base_url": "https://default.example",
+            },
+            "spider_settings": {"article_count": 5},
+        }
+
+        with patch.dict(
+            "os.environ",
+            {
+                "FCL_CONFIG_OVERRIDES": (
+                    "merge_settings.enable=true\n"
+                    "merge_settings.remote_base_url=https://remote.example\n"
+                    "spider_settings.article_count=8\n"
+                    "# ignored comment\n"
+                )
+            },
+            clear=True,
+        ):
+            loaded = load_raw_config("conf.yaml")
+            overridden = _apply_config_overrides(original, "merge_settings.enable=true\nspider_settings.article_count=8")
+
+        self.assertTrue(loaded["merge_settings"]["enable"])
+        self.assertEqual(loaded["merge_settings"]["remote_base_url"], "https://remote.example")
+        self.assertEqual(loaded["spider_settings"]["article_count"], 8)
+        self.assertFalse(original["merge_settings"]["enable"])
+        self.assertEqual(original["spider_settings"]["article_count"], 5)
+        self.assertTrue(overridden["merge_settings"]["enable"])
+        self.assertEqual(overridden["spider_settings"]["article_count"], 8)
+
     def test_github_action_schedule_uses_22_minute_offset(self):
         workflow = Path(".github/workflows/friend_circle_lite.yml").read_text(encoding="utf-8")
 
@@ -40,6 +75,15 @@ class RefactorContractsTest(unittest.TestCase):
             with self.subTest(workflow=str(workflow_path)):
                 workflow = workflow_path.read_text(encoding="utf-8")
                 self.assertIn("FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true", workflow)
+
+    def test_publish_workflow_skips_unchanged_page_tree(self):
+        workflow = Path(".github/workflows/friend_circle_lite.yml").read_text(encoding="utf-8")
+
+        self.assertIn('git fetch origin "${PAGE_BRANCH}:refs/remotes/origin/${PAGE_BRANCH}"', workflow)
+        self.assertIn('published_tree=$(git rev-parse "origin/${PAGE_BRANCH}^{tree}")', workflow)
+        self.assertIn("generated_tree=$(git write-tree)", workflow)
+        self.assertIn('[ "$generated_tree" = "$published_tree" ]', workflow)
+        self.assertIn("No static asset changes; skipping page branch update.", workflow)
 
     def test_static_index_is_standalone_dashboard_with_view_switch(self):
         html = Path("static/index.html").read_text(encoding="utf-8")
@@ -949,6 +993,121 @@ class RefactorContractsTest(unittest.TestCase):
 
         self.assertEqual(text, '{"statistical_data":{"link_total_num":1},"link_data":[{"name":"站点"}]}')
         self.assertEqual(json.loads(text)["link_data"][0]["name"], "站点")
+
+    def test_write_json_preserves_semantically_unchanged_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "link.json"
+            original = '{\n  "link_data": [{"name": "站点"}],\n  "statistical_data": {"link_total_num": 1}\n}\n'
+            path.write_text(original, encoding="utf-8")
+
+            self.assertTrue(write_json(path, {
+                "statistical_data": {"link_total_num": 1},
+                "link_data": [{"name": "站点"}],
+            }))
+
+            self.assertEqual(path.read_text(encoding="utf-8"), original)
+
+    def test_write_json_replaces_changed_file_with_minified_json(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "link.json"
+            path.write_text('{"link_data":[]}', encoding="utf-8")
+
+            self.assertTrue(write_json(path, {
+                "statistical_data": {"link_total_num": 1},
+                "link_data": [{"name": "站点"}],
+            }))
+
+            self.assertEqual(
+                path.read_text(encoding="utf-8"),
+                '{"statistical_data":{"link_total_num":1},"link_data":[{"name":"站点"}]}',
+            )
+
+    def test_write_json_replaces_invalid_or_undecodable_file(self):
+        invalid_files = {
+            "truncated": b'{"link_data":',
+            "non_utf8": b'\xff\xfe',
+        }
+
+        for name, existing in invalid_files.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                path = Path(temp_dir) / "link.json"
+                path.write_bytes(existing)
+
+                self.assertTrue(write_json(path, {"link_data": []}))
+                self.assertEqual(path.read_text(encoding="utf-8"), '{"link_data":[]}')
+
+    def test_write_json_skips_when_only_volatile_timestamps_change(self):
+        cases = {
+            "all_json_last_updated_time": {
+                "original": (
+                    '{"statistical_data":{"friends_num":1,"article_num":1,'
+                    '"last_updated_time":"2026-08-01 10:00:00"},'
+                    '"article_data":[{"title":"A","created":"2026-08-01 09:00","link":"https://a","author":"x","avatar":""}]}'
+                ),
+                "payload": {
+                    "statistical_data": {
+                        "friends_num": 1,
+                        "article_num": 1,
+                        "last_updated_time": "2026-08-15 23:59:59",
+                    },
+                    "article_data": [{
+                        "title": "A",
+                        "created": "2026-08-01 09:00",
+                        "link": "https://a",
+                        "author": "x",
+                        "avatar": "",
+                    }],
+                },
+            },
+            "link_json_last_checked_time": {
+                "original": (
+                    '{"statistical_data":{"link_total_num":1,"link_last_checked_time":"2026-08-01 10:00:00"},'
+                    '"link_data":[{"name":"站点","link":"https://site.example","reachable":true}]}'
+                ),
+                "payload": {
+                    "statistical_data": {
+                        "link_total_num": 1,
+                        "link_last_checked_time": "2026-08-15 23:59:59",
+                    },
+                    "link_data": [{
+                        "name": "站点",
+                        "link": "https://site.example",
+                        "reachable": True,
+                    }],
+                },
+            },
+        }
+
+        for name, case in cases.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                path = Path(temp_dir) / f"{name}.json"
+                path.write_text(case["original"], encoding="utf-8")
+
+                self.assertTrue(write_json(path, case["payload"]))
+                self.assertEqual(path.read_text(encoding="utf-8"), case["original"])
+
+    def test_write_json_rewrites_when_content_changes_even_if_time_matches(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "all.json"
+            path.write_text(
+                '{"statistical_data":{"friends_num":1,"last_updated_time":"2026-08-01 10:00:00"},'
+                '"article_data":[{"title":"Old"}]}',
+                encoding="utf-8",
+            )
+
+            self.assertTrue(write_json(path, {
+                "statistical_data": {
+                    "friends_num": 1,
+                    "last_updated_time": "2026-08-01 10:00:00",
+                },
+                "article_data": [{"title": "New"}],
+            }))
+
+            self.assertEqual(
+                path.read_text(encoding="utf-8"),
+                '{"statistical_data":{"friends_num":1,"last_updated_time":"2026-08-01 10:00:00"},'
+                '"article_data":[{"title":"New"}]}',
+            )
 
     def test_link_merge_keeps_best_reachability_shape(self):
         local = {
